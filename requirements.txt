@@ -1,0 +1,10 @@
+jax==0.5.0
+jaxlib==0.5.0
+gtsam==4.2
+matplotlib==3.10.0
+numpy==1.26.4
+open3d==0.19.0
+scikit_learn==1.6.1
+scipy==1.15.2
+transforms3d==0.4.1
+tqdm==4.67.1
