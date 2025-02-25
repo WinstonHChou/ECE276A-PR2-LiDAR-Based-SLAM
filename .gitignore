@@ -171,4 +171,5 @@ cython_debug/
 .pypirc
 
 # Project 2
+**/dataRGBD/**
 *.docx
