@@ -2,6 +2,8 @@
 import numpy as np
 import matplotlib.pyplot as plt; plt.ion()
 import time
+from scipy.interpolate import interp1d
+from tqdm import tqdm
 
 def tic():
   return time.time()
