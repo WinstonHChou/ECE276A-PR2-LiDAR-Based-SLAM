@@ -2,7 +2,8 @@ import os
 import scipy.io as sio
 import numpy as np
 import open3d as o3d
-
+from sklearn.neighbors import NearestNeighbors
+from tqdm import tqdm
 
 def read_canonical_model(model_name):
   '''
@@ -50,4 +51,82 @@ def visualize_icp_result(source_pc, target_pc, pose):
 
   o3d.visualization.draw_geometries([source_pcd, target_pcd])
 
+def to_homogeneous_points(xyz_points: np.ndarray) -> np.ndarray:
+  if xyz_points.shape[1] != 3:
+        raise ValueError("xyz_points must have shape (n, 3)")
+  return np.column_stack((xyz_points, np.ones(xyz_points.shape[0]))).T
+
+def to_xyz_points(homogeneous_points: np.ndarray) -> np.ndarray:
+  if homogeneous_points.shape[0] != 4:
+        raise ValueError("homogenous_points must have shape (n, 4)")
+  return homogeneous_points[:3, :].T
+
+def to_transformation(R: np.ndarray, p: np.ndarray):
+  error_msg = ""
+  if R.shape != (3,3):
+    error_msg += "R must be (3, 3).\n"
+  if p.shape != (3,1):
+    error_msg += "p must be (3, 1).\n"
+  if error_msg:
+    raise ValueError(error_msg)
+
+  T = np.eye(4)
+  T[:3, :3] = R
+  T[:3, 3:] = p
+
+  return T
+
+def to_R_p(T: np.ndarray):
+  if T.shape != (4,4):
+    raise ValueError("T must be (4, 4).\n")
+
+  R = T[:3, :3]
+  p = T[:3, 3:]
+
+  return R, p
+
+def find_closest_points(source: np.ndarray, target: np.ndarray) -> np.ndarray:
+  """
+  Find the closest points in the target points for each point in the source using Scikit-learn's NearestNeighbors.
+  """
+  neigh = NearestNeighbors(n_neighbors=1)
+  neigh.fit(target)
+  indices = neigh.kneighbors(source, return_distance=False)
+  closest_points = target[indices.squeeze()]
+  return closest_points
+
+def estimate_transformation(source: np.ndarray, target: np.ndarray) -> np.ndarray:
+  """
+  Given (source, target) point association,
+  Estimate the rotation and translation using Kabsch Algorithm.
+  """
+  source_centroid = np.mean(source, axis=0)
+  target_centroid = np.mean(target, axis=0)
+  Q =  np.dot((target - target_centroid).T, (source - source_centroid))
+  U, _, Vt = np.linalg.svd(Q)
+  R = U @ Vt
+  # Convert LHS to RHS if found R to be LHS
+  if np.linalg.det(R) < 0:
+      Vt[2,:] *= -1
+      R = U @ Vt
+  p = (target_centroid - R @ source_centroid).reshape(3,1)
+  return to_transformation(R, p)
+
+def icp(source_pc: np.ndarray, target_pc: np.ndarray, T_0 = np.eye(4), iterations=100, tolerance=1e-8):
+  '''
+  return estimated_transformation and error
+  '''
+  source_pc_transformed = to_xyz_points(T_0 @ to_homogeneous_points(source_pc))
+
+  prev_error = float('inf')
+  for i in range(iterations):
+    closest_points = find_closest_points(source_pc_transformed, target_pc)
+    T = estimate_transformation(source_pc_transformed, closest_points)
+    source_pc_transformed = to_xyz_points(T @ to_homogeneous_points(source_pc_transformed))
+    error = np.sqrt(np.mean(np.sum((closest_points - source_pc_transformed) ** 2, axis=1))) # RSME
+    if np.abs(prev_error - error) < tolerance:
+        break
+    prev_error = error
+  T = estimate_transformation(source_pc, closest_points)
+  return T, error
 
