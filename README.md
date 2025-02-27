@@ -60,3 +60,17 @@ The code is only tested with miniconda environment in **WSL2** to ensure that `o
 
 ## Running the Project
 ...............
+
+### ICP (Iterative Closest Points) Warm Up
+To execute the icp warm up script, do:
+```python3
+cd src/icp_warm_up/
+python3 test_icp.py
+```
+which should process all warm up **practice datasets (4 datasests each, for `drill` and `liq_container`, total of 8 datasets)**
+
+## Results
+...............
+
+## Acknowledgments
+This project is part of the **ECE 276A** course at **UC San Diego**, which is inspired by the teaching and research of various professors in the field of robotics and estimation
