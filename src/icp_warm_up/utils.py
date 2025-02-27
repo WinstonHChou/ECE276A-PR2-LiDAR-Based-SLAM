@@ -130,3 +130,16 @@ def icp(source_pc: np.ndarray, target_pc: np.ndarray, T_0 = np.eye(4), iteration
   T = estimate_transformation(source_pc, closest_points)
   return T, error
 
+def o3d_icp(source_pc, target_pc, T_0 = np.eye(4), threshold = 5):
+  source = o3d.geometry.PointCloud()
+  target = o3d.geometry.PointCloud()
+  source.points = o3d.utility.Vector3dVector(source_pc)
+  target.points = o3d.utility.Vector3dVector(target_pc)
+  
+  # Apply ICP registration
+  reg_p2p = o3d.pipelines.registration.registration_icp(
+      source, target, threshold, T_0,
+      o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+      o3d.pipelines.registration.ICPConvergenceCriteria(relative_rmse=1e-8, max_iteration=1000))
+
+  return reg_p2p.transformation, reg_p2p.inlier_rmse
