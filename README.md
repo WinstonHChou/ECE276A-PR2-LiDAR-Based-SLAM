@@ -62,12 +62,12 @@ The code is only tested with miniconda environment in **WSL2** to ensure that `o
 ...............
 
 ### ICP (Iterative Closest Points) Warm Up
-To execute the icp warm up script, do:
-```python3
+To execute the **icp warm up script**, do:
+```bash
 cd src/icp_warm_up/
 python3 test_icp.py
 ```
-which should process all warm up **practice datasets (4 datasests each, for `drill` and `liq_container`, total of 8 datasets)**
+Which should process all Warm Up **Practice Datasets (4 datasests each, for `drill` and `liq_container`, a total of 8 datasets)**
 
 ## Results
 ...............
