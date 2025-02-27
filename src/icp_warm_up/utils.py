@@ -143,3 +143,21 @@ def o3d_icp(source_pc, target_pc, T_0 = np.eye(4), threshold = 5):
       o3d.pipelines.registration.ICPConvergenceCriteria(relative_rmse=1e-8, max_iteration=1000))
 
   return reg_p2p.transformation, reg_p2p.inlier_rmse
+
+def auto_guess_icp(source, target, trial = 10, icp_type="icp"):
+    best_T, best_error = np.eye(4), float("inf")
+    for yaw in np.linspace(0, 2*np.pi, trial):
+        R_0 = np.array([
+            [np.cos(yaw), -np.sin(yaw), 0],
+            [np.sin(yaw), np.cos(yaw), 0],
+            [0,0,1]
+        ])
+        p_0 = np.array([1,0,0]).reshape(3,1)
+        
+        if icp_type == "o3d_icp":
+          T, error = o3d_icp(source, target, to_transformation(R_0, p_0))
+        else:
+          T, error = icp(source, target, to_transformation(R_0, p_0))
+        if error < best_error:
+            best_T = T
+    return best_T, best_error
