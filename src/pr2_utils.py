@@ -7,6 +7,8 @@ import scipy
 from transforms3d.euler import mat2euler
 from tqdm import tqdm
 
+from icp_warm_up.utils import to_homogeneous_points, to_xyz_points, to_R_p, to_transformation, visualize_icp_result, icp, o3d_icp, icp_percentile
+
 def tic():
   return time.time()
 def toc(tstart, name="Operation"):
@@ -82,6 +84,85 @@ class DifferentialDriveOdometryPostProcess:
     plt.title("Velocity Comparison")
     plt.grid()
     plt.legend()
+    plt.show(block=True)
+
+class LaserScanMatching:
+  def __init__(self, lidar_data, imu_odometry_data):
+    self.lidar = lidar_data
+    self.lidar_angle_min = lidar_data["angle_min"] # start angle of the scan [rad]
+    self.lidar_angle_max = lidar_data["angle_max"] # end angle of the scan [rad]
+    self.lidar_angle_increment = lidar_data["angle_increment"] # angular distance between measurements [rad]
+    self.lidar_range_min = lidar_data["range_min"] # minimum range value [m]
+    self.lidar_range_max = lidar_data["range_max"] # maximum range value [m]
+    self.lidar_ranges = lidar_data["ranges"]       # range data [m] (Note: values < range_min or > range_max should be discarded)
+    self.lidar_stamps = lidar_data["time_stamps"]  # acquisition times of the lidar scans
+
+    self.lidar_num_of_points = int((self.lidar_angle_max - self.lidar_angle_min) / self.lidar_angle_increment) + 1
+    self.lidar_angles = np.linspace(self.lidar_angle_min, self.lidar_angle_max, self.lidar_num_of_points)
+    
+    self.imu_odometry_poses = imu_odometry_data["poses"]
+    self.imu_odometry_stamps = imu_odometry_data["stamps"]
+
+    self.timestamps = np.cumsum(np.concatenate(([0], np.diff(self.lidar_stamps))))         # normalized timestamp
+    self.imu_odometry_stamps = np.cumsum(np.concatenate(([0], np.diff(self.imu_odometry_stamps)))) # normalized timestamp
+    self.imu_odometry_poses_sync = np.array([np.interp(self.timestamps, self.imu_odometry_stamps, self.imu_odometry_poses[:,i]) for i in range(self.imu_odometry_poses.shape[1])]).T
+
+    # print(self.imu_odometry_poses_sync[1400])
+    # self.plot_laserscan(self.lidar_ranges.T[1400], self.imu_odometry_poses_sync[1400])
+
+    self.icp_odometry_poses = self.icp_scan_matching()
+
+  def lidarscan_to_pointcloud(self, ranges):
+    '''
+    return pointcloud in local frame
+    '''
+    range_indices = (ranges > self.lidar_range_min) & (ranges < self.lidar_range_max)
+    z_offset = 0
+    x = ranges[range_indices] * np.cos(self.lidar_angles[range_indices])
+    y = ranges[range_indices] * np.sin(self.lidar_angles[range_indices])
+    z = np.full(x.shape, z_offset)
+
+    return np.stack([x,y,z]).T
+  
+  def icp_scan_matching(self):
+    icp_T = np.zeros([self.timestamps.shape[0],4,4])
+    icp_T[0] = np.eye(4)
+    imu_odometry_T = pose2d_to_transformation(self.imu_odometry_poses_sync)
+    error_sum = 0
+    for i in tqdm(range(1, self.timestamps.shape[0])):
+        T_guess = np.linalg.inv(imu_odometry_T[i-1]) @ imu_odometry_T[i]
+        T, error = icp_percentile(
+          self.lidarscan_to_pointcloud(self.lidar_ranges.T[i, :]),
+          self.lidarscan_to_pointcloud(self.lidar_ranges.T[i-1, :]),
+          T_guess
+        )
+        error_sum += error
+        icp_T[i] = icp_T[i-1] @ T
+    print(error_sum / self.timestamps.shape[0])
+    icp_odometry = transformation_to_pose2d(icp_T)
+    # print(icp_odometry)
+
+    return icp_odometry
+  
+  def plot_laserscan(self, lidar_ranges, odometry_pose):
+    odometry_transformation = pose2d_to_transformation(odometry_pose)
+    pc = self.lidarscan_to_pointcloud(lidar_ranges)
+    pc_to_odom = to_xyz_points(odometry_transformation @ (to_homogeneous_points(pc)))
+    plt.scatter(pc_to_odom[:,0], pc_to_odom[:,1])
+
+    dx = 3 * np.cos(odometry_pose[2])
+    dy = 3 * np.sin(odometry_pose[2])
+    plt.arrow(odometry_pose[0], odometry_pose[1], dx, dy, head_width=0.1, head_length=0.15, fc='red', ec='red')
+    
+    dx = 3 * np.cos(odometry_pose[2] + self.lidar_angle_max)
+    dy = 3 * np.sin(odometry_pose[2] + self.lidar_angle_max)
+    plt.arrow(odometry_pose[0], odometry_pose[1], dx, dy, head_width=0.1, head_length=0.15, fc='grey', ec='grey')
+    
+    dx = 3 * np.cos(odometry_pose[2] + self.lidar_angle_min)
+    dy = 3 * np.sin(odometry_pose[2] + self.lidar_angle_min)
+    plt.arrow(odometry_pose[0], odometry_pose[1], dx, dy, head_width=0.1, head_length=0.15, fc='grey', ec='grey')
+    
+    plt.grid(True)
     plt.show(block=True)
 
 def angle_modulus(angle_rad):

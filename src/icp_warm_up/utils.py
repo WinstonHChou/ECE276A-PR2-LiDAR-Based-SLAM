@@ -95,6 +95,20 @@ def find_closest_points(source: np.ndarray, target: np.ndarray) -> np.ndarray:
   closest_points = target[indices.squeeze()]
   return closest_points
 
+def find_closest_points_threshold(source, target, percentile):
+  """
+  Find the closest points in the target for each point in the source using Scikit-learn's NearestNeighbors.
+  """
+  neigh = NearestNeighbors(n_neighbors=1)
+  neigh.fit(target)
+  distances, indices = neigh.kneighbors(source, return_distance=True)
+
+  distance_threshold = np.percentile(distances, percentile * 100)
+  mask = distances.flatten() <= distance_threshold
+
+  closest_points = target[indices.flatten()]
+  return closest_points, mask
+
 def estimate_transformation(source: np.ndarray, target: np.ndarray) -> np.ndarray:
   """
   Given (source, target) point association,
@@ -161,3 +175,21 @@ def auto_guess_icp(source, target, trial = 10, icp_type="icp"):
         if error < best_error:
             best_T = T
     return best_T, best_error
+
+def icp_percentile(source, target, T_0 = np.eye(4), percentile=0.9, iterations=100, tolerance=1e-8):
+  '''
+  return estimated_transformation and error
+  '''
+  source_transformed = to_xyz_points(T_0 @ to_homogeneous_points(source))
+
+  prev_error = float('inf')
+  for i in range(iterations):
+      closest_points, mask = find_closest_points_threshold(source_transformed, target, percentile)
+      T = estimate_transformation(source_transformed[mask], closest_points[mask])
+      source_transformed = to_xyz_points(T @ to_homogeneous_points(source_transformed))
+      error = np.sqrt(np.mean(np.sum((closest_points - source_transformed) ** 2, axis=1))) # RSME
+      if np.abs(prev_error - error) < tolerance:
+          break
+      prev_error = error
+  T = estimate_transformation(source[mask], closest_points[mask])
+  return T, error
