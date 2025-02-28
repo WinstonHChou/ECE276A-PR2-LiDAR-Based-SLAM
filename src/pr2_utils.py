@@ -5,6 +5,8 @@ import time
 import sys
 import scipy
 from transforms3d.euler import mat2euler
+import gtsam
+from gtsam import NonlinearFactorGraph, Values, Pose2, BetweenFactorPose2
 from tqdm import tqdm
 
 from icp_warm_up.utils import to_homogeneous_points, to_xyz_points, to_R_p, to_transformation, visualize_icp_result, icp, o3d_icp, icp_percentile
@@ -96,9 +98,6 @@ class LaserScanMatching:
     self.lidar_range_max = lidar_data["range_max"] # maximum range value [m]
     self.lidar_ranges = lidar_data["ranges"]       # range data [m] (Note: values < range_min or > range_max should be discarded)
     self.lidar_stamps = lidar_data["time_stamps"]  # acquisition times of the lidar scans
-
-    self.lidar_num_of_points = int((self.lidar_angle_max - self.lidar_angle_min) / self.lidar_angle_increment) + 1
-    self.lidar_angles = np.linspace(self.lidar_angle_min, self.lidar_angle_max, self.lidar_num_of_points)
     
     self.imu_odometry_poses = imu_odometry_data["poses"]
     self.imu_odometry_stamps = imu_odometry_data["stamps"]
@@ -111,18 +110,6 @@ class LaserScanMatching:
     # self.plot_laserscan(self.lidar_ranges.T[1400], self.imu_odometry_poses_sync[1400])
 
     self.icp_odometry_poses = self.icp_scan_matching()
-
-  def lidarscan_to_pointcloud(self, ranges):
-    '''
-    return pointcloud in local frame
-    '''
-    range_indices = (ranges > self.lidar_range_min) & (ranges < self.lidar_range_max)
-    z_offset = 0
-    x = ranges[range_indices] * np.cos(self.lidar_angles[range_indices])
-    y = ranges[range_indices] * np.sin(self.lidar_angles[range_indices])
-    z = np.full(x.shape, z_offset)
-
-    return np.stack([x,y,z]).T
   
   def icp_scan_matching(self):
     icp_T = np.zeros([self.timestamps.shape[0],4,4])
@@ -132,8 +119,8 @@ class LaserScanMatching:
     for i in tqdm(range(1, self.timestamps.shape[0])):
         T_guess = np.linalg.inv(imu_odometry_T[i-1]) @ imu_odometry_T[i]
         T, error = icp_percentile(
-          self.lidarscan_to_pointcloud(self.lidar_ranges.T[i, :]),
-          self.lidarscan_to_pointcloud(self.lidar_ranges.T[i-1, :]),
+          lidarscan_to_pointcloud(self.lidar_ranges.T[i, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
+          lidarscan_to_pointcloud(self.lidar_ranges.T[i-1, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
           T_guess
         )
         error_sum += error
@@ -146,7 +133,9 @@ class LaserScanMatching:
   
   def plot_laserscan(self, lidar_ranges, odometry_pose):
     odometry_transformation = pose2d_to_transformation(odometry_pose)
-    pc = self.lidarscan_to_pointcloud(lidar_ranges)
+    pc = lidarscan_to_pointcloud(
+      lidar_ranges, self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment
+    )
     pc_to_odom = to_xyz_points(odometry_transformation @ (to_homogeneous_points(pc)))
     plt.scatter(pc_to_odom[:,0], pc_to_odom[:,1])
 
@@ -164,6 +153,125 @@ class LaserScanMatching:
     
     plt.grid(True)
     plt.show(block=True)
+
+class PoseGraphOptimization:
+  def __init__(self, lidar_raw, imu_odometry_raw, icp_odometry_raw):
+    self.lidar_ranges = lidar_raw["ranges"]       # range data [m] (Note: values < range_min or > range_max should be discarded)
+    self.lidar_stamps = lidar_raw["time_stamps"]  # acquisition times of the lidar scans
+    self.lidar_angle_min = lidar_raw["angle_min"] # start angle of the scan [rad]
+    self.lidar_angle_max = lidar_raw["angle_max"] # end angle of the scan [rad]
+    self.lidar_angle_increment = lidar_raw["angle_increment"] # angular distance between measurements [rad]
+    self.lidar_range_min = lidar_raw["range_min"] # minimum range value [m]
+    self.lidar_range_max = lidar_raw["range_max"] # maximum range value [m]
+
+    self.imu_odometry_poses = imu_odometry_raw["poses"]
+    self.imu_odometry_stamps = imu_odometry_raw["stamps"]
+    self.icp_odometry_poses = icp_odometry_raw["poses"]
+    self.icp_odometry_stamps = icp_odometry_raw["stamps"]
+
+    self.timestamps = np.cumsum(np.concatenate(([0], np.diff(self.lidar_stamps))))                 # normalized timestamp
+    self.imu_odometry_stamps = np.cumsum(np.concatenate(([0], np.diff(self.imu_odometry_stamps)))) # normalized timestamp
+    self.icp_odometry_stamps = np.cumsum(np.concatenate(([0], np.diff(self.icp_odometry_stamps)))) # normalized timestamp
+    self.imu_odometry_poses_sync = np.array([np.interp(self.timestamps, self.imu_odometry_stamps, self.imu_odometry_poses[:,i]) for i in range(self.imu_odometry_poses.shape[1])]).T
+    self.icp_odometry_poses_sync = np.array([np.interp(self.timestamps, self.icp_odometry_stamps, self.icp_odometry_poses[:,i]) for i in range(self.icp_odometry_poses.shape[1])]).T
+
+    # self.find_near_points(self.icp_odometry_poses_sync, 1900)
+    self.posegraph_optimize()
+    self.factor_graph_optimized = []
+    for i in range(self.timestamps.shape[0]):
+      pose = self.result.atPose2(i)
+      self.factor_graph_optimized.append([pose.x(), pose.y(), pose.theta()])
+    self.factor_graph_optimized = np.array(self.factor_graph_optimized)
+
+  def posegraph_optimize(self):
+    self.graph = NonlinearFactorGraph()
+
+    initial_estimate = Values()
+    for i, t in enumerate(self.timestamps):
+      initial_estimate.insert(i, Pose2(0,0,0))
+
+    # Add a prior for the first pose, assuming we start at the origin with no uncertainty
+    self.graph.add(gtsam.PriorFactorPose2(0, gtsam.Pose2(0, 0, 0),  gtsam.noiseModel.Diagonal.Sigmas([0, 0, 0])))
+
+    sigma = [0.0025, 0.0025, 0.0025]
+    noise = gtsam.noiseModel.Diagonal.Sigmas(sigma)
+
+    for i in range(1, self.timestamps.shape[0]):
+      delta_pose = self.imu_odometry_poses_sync[i, :] - self.imu_odometry_poses_sync[i-1, :]
+      self.graph.add(BetweenFactorPose2(
+        i-1, i, 
+        Pose2(delta_pose[0], delta_pose[1], delta_pose[2]), 
+        noise
+      )
+    )
+
+    for i in range(1, self.timestamps.shape[0]):
+      delta_pose = self.icp_odometry_poses_sync[i, :] - self.icp_odometry_poses_sync[i-1, :]
+      self.graph.add(BetweenFactorPose2(
+        i-1, i, 
+        Pose2(delta_pose[0], delta_pose[1], delta_pose[2]), 
+        noise
+      )
+    )
+
+    num_new_edge = 0
+    sum_error = 0
+    bar = tqdm(range(1, self.timestamps.shape[0], 400))
+    for i in bar:
+        near_point_indices = self.find_near_points(self.icp_odometry_poses_sync, i)
+        num_new_edge += len(near_point_indices)
+        bar.set_postfix_str(f"num_new_edge: {num_new_edge}")
+        for near_point_index in near_point_indices:
+          T_guess = np.linalg.inv(pose2d_to_transformation(self.imu_odometry_poses_sync[near_point_index])) * pose2d_to_transformation(self.imu_odometry_poses_sync[i])
+          delta_theta = abs((self.imu_odometry_poses_sync[i,2] - self.imu_odometry_poses_sync[near_point_index,2]) % (2 * np.pi) - np.pi)
+          expected_percentile = -0.1591*delta_theta+0.9
+          T_diff, error = icp_percentile(
+            lidarscan_to_pointcloud(self.lidar_ranges.T[i, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
+            lidarscan_to_pointcloud(self.lidar_ranges.T[i-1, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
+            T_guess, percentile=expected_percentile
+          )
+          sum_error += error
+          odom_diff = transformation_to_pose2d(T_diff)
+          self.graph.add(BetweenFactorPose2(
+              near_point_index, i,
+              Pose2(*odom_diff), 
+              gtsam.noiseModel.Diagonal.Sigmas([error, error, error])
+            )
+          )
+    avg_error = sum_error / num_new_edge
+    print(avg_error)
+    print(num_new_edge)
+
+    params = gtsam.GaussNewtonParams()
+    params.setVerbosity("Termination")  # this will show info about stopping conds
+    params.setMaxIterations(1500)
+    optimizer = gtsam.GaussNewtonOptimizer(self.graph, initial_estimate, params)
+    self.result = optimizer.optimize()
+
+  def find_near_points(self, poses, odom_index,
+                       distance_threshold=0.1, theta_threshold=0.75*np.pi, min_interval = 30):
+    '''
+    Given an odometry and an index of interest pose
+    return a set of indices that are close to the the index.
+    '''
+    # Extract the point of interest
+    odom_pose = poses[odom_index]
+
+    # Calculate the distances and angles to all other points
+    deltas = poses - odom_pose
+    distances = deltas[:, 0]**2 + deltas[:, 1]**2
+    angle_differences = np.abs((deltas[:, 2] + np.pi) % (2 * np.pi) - np.pi)
+
+    # Find points that meet the distance and angle criteria
+    close_indices = np.where((distances <= distance_threshold**2) & (angle_differences <= theta_threshold))[0]
+
+    # Filter out points that are too close to each other in terms of index
+    filtered_indices = []
+    for index in close_indices:
+        if not filtered_indices or (index - filtered_indices[-1]) >= min_interval:
+            filtered_indices.append(index)
+
+    return filtered_indices
 
 def angle_modulus(angle_rad):
     single_angle = not isinstance(angle_rad, np.ndarray)
@@ -213,6 +321,20 @@ def transformation_to_pose2d(transformation):
     return pose2d[0,:]
 
   return pose2d
+
+def lidarscan_to_pointcloud(ranges, range_min, range_max, angle_min, angle_max, angle_increment):
+  '''
+  return pointcloud in local frame
+  '''
+  lidar_num_of_points = int((angle_max - angle_min) / angle_increment) + 1
+  lidar_angles = np.linspace(angle_min, angle_max, lidar_num_of_points)
+  range_indices = (ranges > range_min) & (ranges < range_max)
+  z_offset = 0
+  x = ranges[range_indices] * np.cos(lidar_angles[range_indices])
+  y = ranges[range_indices] * np.sin(lidar_angles[range_indices])
+  z = np.full(x.shape, z_offset)
+
+  return np.stack([x,y,z]).T
 
 def plot_odometry(odometry_serious, legend_kw = {}):
     '''
