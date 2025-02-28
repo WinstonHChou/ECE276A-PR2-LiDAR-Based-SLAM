@@ -149,11 +149,13 @@ def o3d_icp(source_pc, target_pc, T_0 = np.eye(4), threshold = 5):
   target = o3d.geometry.PointCloud()
   source.points = o3d.utility.Vector3dVector(source_pc)
   target.points = o3d.utility.Vector3dVector(target_pc)
+  # target.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
   
   # Apply ICP registration
   reg_p2p = o3d.pipelines.registration.registration_icp(
       source, target, threshold, T_0,
       o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+      # o3d.pipelines.registration.TransformationEstimationPointToPlane(),
       o3d.pipelines.registration.ICPConvergenceCriteria(relative_rmse=1e-8, max_iteration=1000))
 
   return reg_p2p.transformation, reg_p2p.inlier_rmse
