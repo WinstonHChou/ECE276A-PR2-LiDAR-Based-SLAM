@@ -2,7 +2,8 @@
 import numpy as np
 import matplotlib.pyplot as plt; plt.ion()
 import time
-from scipy.interpolate import interp1d
+import scipy
+from transforms3d.euler import mat2euler
 from tqdm import tqdm
 
 def tic():
@@ -10,6 +11,66 @@ def tic():
 def toc(tstart, name="Operation"):
   print('%s took: %s sec.\n' % (name,(time.time() - tstart)))
 
+class DifferentialDriveOdometryPostProcess:
+  def __init__(self, left_encoder_rev, right_encoder_rev, encoder_stamps, imu_omega, imu_stamps, T_0 = np.eye(4)):
+
+    WHEEL_DIAMETER = 0.254 # meters
+    
+    self.dt = np.diff(encoder_stamps)
+
+    self.VL = np.diff(left_encoder_rev) * np.pi * WHEEL_DIAMETER / self.dt
+    self.VR = np.diff(right_encoder_rev) * np.pi * WHEEL_DIAMETER / self.dt
+    self.V = (self.VL + self.VR) / 2
+
+    self.timestamps = np.cumsum(np.concatenate(([0], self.dt)))
+    imu_stamps = imu_stamps - np.full(imu_stamps.shape, imu_stamps[0])
+    # imu_stamps = np.linspace(self.timestamps[0], self.timestamps[-1], imu_omega.shape[0])
+    self.omega = np.interp(self.timestamps, imu_stamps, imu_omega)
+
+    self.poses = np.zeros((len(self.dt) + 1, 3))
+    T_prev = T_0
+    for i, pose in enumerate(self.poses):
+      dt = self.dt[i-1]
+      v_t = self.V[i-1]
+      omega_t = self.omega[i-1]
+  
+      twist = np.zeros((4, 4))
+      twist[0, 1] = -omega_t
+      twist[1, 0] = omega_t
+      twist[0, 3] = v_t
+  
+      T = T_prev @ scipy.linalg.expm(twist * dt)
+
+      R = T[:3, :3]
+      _, _, yaw = mat2euler(R, axes='sxyz')
+  
+      pose[0] = T[0, 3]  # x
+      pose[1] = T[1, 3]  # y
+      pose[2] = yaw      # theta
+      
+      T_prev = T
+
+  def plot_odom(self):
+    plt.figure()
+    plt.plot(self.poses[:, 0], self.poses[:, 1], marker='o', linestyle='-', markersize=1, label="trajectory from odometry")
+    plt.xlabel("X (m)")
+    plt.ylabel("Y (m)")
+    plt.title("2D Trajectory")
+    plt.grid()
+    plt.legend()
+    plt.show(block=True)
+
+  def plot_velocity(self):
+    plt.figure()
+    plt.plot(self.VL, marker='o', linestyle='-', markersize=1, label="VL")
+    plt.plot(self.VR, marker='o', linestyle='-', markersize=1, label="VR")
+    plt.plot(self.V, marker='o', linestyle='-', markersize=1, label="V_average")
+    plt.xlabel("number of data")
+    plt.ylabel("Velocity (m/s)")
+    plt.title("Velocity Comparison")
+    plt.grid()
+    plt.legend()
+    plt.show(block=True)
 
 def bresenham2D(sx, sy, ex, ey):
   '''
