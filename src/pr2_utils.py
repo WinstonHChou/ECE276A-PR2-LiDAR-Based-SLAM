@@ -43,15 +43,17 @@ class DifferentialDriveOdometryPostProcess:
 
     WHEEL_DIAMETER = 0.254 # meters
     
-    self.dt = np.diff(encoder_stamps)
+    self.dt = np.diff(imu_stamps)
+    self.omega = imu_omega
+
+    self.timestamps = np.cumsum(np.concatenate(([0], self.dt)))   # normalized timestamp
+    encoder_stamps = np.cumsum(np.concatenate(([0], np.diff(encoder_stamps)))) # normalized timestamp
+    left_encoder_rev = np.interp(self.timestamps, encoder_stamps, left_encoder_rev)
+    right_encoder_rev = np.interp(self.timestamps, encoder_stamps, right_encoder_rev)
 
     self.VL = np.diff(left_encoder_rev) * np.pi * WHEEL_DIAMETER / self.dt
     self.VR = np.diff(right_encoder_rev) * np.pi * WHEEL_DIAMETER / self.dt
     self.V = (self.VL + self.VR) / 2
-
-    self.timestamps = np.cumsum(np.concatenate(([0], self.dt)))   # normalized timestamp
-    imu_cum_stamps = np.cumsum(np.concatenate(([0], np.diff(imu_stamps)))) # normalized timestamp
-    self.omega = np.interp(self.timestamps, imu_cum_stamps, imu_omega)
 
     self.poses = np.zeros((len(self.dt) + 1, 3))
     T_prev = T_0
