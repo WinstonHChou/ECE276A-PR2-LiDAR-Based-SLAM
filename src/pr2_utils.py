@@ -94,6 +94,96 @@ class DifferentialDriveOdometryPostProcess:
     plt.legend()
     plt.show(block=True)
 
+def pose2d_to_transformation(pose2d):
+  single_pose2d = False
+  if pose2d.shape == (3,):
+    single_pose2d = True
+    pose2d = pose2d.reshape(1,3)
+
+  transformation = np.zeros((pose2d.shape[0], 4, 4))
+  transformation[:, 0, 0] = np.cos(pose2d[:, 2])
+  transformation[:, 0, 1] = -np.sin(pose2d[:, 2])
+  transformation[:, 1, 0] = np.sin(pose2d[:, 2])
+  transformation[:, 1, 1] = np.cos(pose2d[:, 2])
+  transformation[:, 2, 2] = 1
+  transformation[:, 0, 3] = pose2d[:, 0]
+  transformation[:, 1, 3] = pose2d[:, 1]
+  transformation[:, 3, 3] = 1
+
+  if single_pose2d:
+    return transformation[0,:,:]
+
+  return transformation
+
+def transformation_to_pose2d(transformation):
+  single_T = False
+  if transformation.shape == (4,4):
+    single_T = True
+    transformation = transformation.reshape(1,4,4)
+
+  R = transformation[:, :3, :3]
+  euler_angles = np.array([mat2euler(R_i, axes='sxyz') for R_i in R])
+  yaw = euler_angles[:,2]
+
+  pose2d = np.zeros((transformation.shape[0], 3))
+  pose2d[:, 0] = transformation[:, 0, 3]  # x
+  pose2d[:, 1] = transformation[:, 1, 3]  # y
+  pose2d[:, 2] = yaw                      # theta
+
+  if single_T:
+    return pose2d[0,:]
+
+  return pose2d
+
+def plot_odometry(odometry_serious, legend_kw = {}):
+    '''
+    odometries: [(odometry1, timestamp1, label), (odometry2, timestamp2, label), ...]
+    '''
+    for serious in odometry_serious:
+        odometry, stamp, label = serious[:3]
+        kwargs = {}
+        if len(serious) == 4:
+            kwargs = serious[3]
+        plt.plot(odometry[:,0], odometry[:,1], label=label, **kwargs)
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.legend(**legend_kw)
+    plt.grid(True)
+    plt.show(block=True)
+
+    for i, serious in enumerate(odometry_serious):
+        odometry, stamp, label = serious[:3]
+        kwargs = {}
+        if len(serious) == 4:
+            kwargs = serious[3]
+        plt.plot(stamp, odometry[:,0], label=label, **kwargs)
+    plt.xlabel("timestamp")
+    plt.ylabel("x")
+    plt.legend(**legend_kw)
+    plt.show(block=True)
+
+    for i, serious in enumerate(odometry_serious):
+        odometry, stamp, label = serious[:3]
+        kwargs = {}
+        if len(serious) == 4:
+            kwargs = serious[3]
+        plt.plot(stamp, odometry[:,1], label=label, **kwargs)
+    plt.xlabel("timestamp")
+    plt.ylabel("y")
+    plt.legend(**legend_kw)
+    plt.show(block=True)
+
+    for i, serious in enumerate(odometry_serious):
+        odometry, stamp, label = serious[:3]
+        kwargs = {}
+        if len(serious) == 4:
+            kwargs = serious[3]
+        plt.plot(stamp, np.unwrap(odometry[:,2]), label=label, **kwargs)
+    plt.xlabel("timestamp")
+    plt.ylabel("yaw")
+    plt.legend(**legend_kw)
+    plt.show(block=True)
+
 def bresenham2D(sx, sy, ex, ey):
   '''
   Bresenham's ray tracing algorithm in 2D.
