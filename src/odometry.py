@@ -30,6 +30,11 @@ if __name__ == '__main__':
     imu_omega,
     imu_stamps
   )
-  odometry.plot_odom()
+  plot_odometry(
+    [
+      (odometry.poses, odometry.timestamps, "IMU Odometry (motion model)"),
+    ],
+    {"loc": "upper right"}
+  )
 
   np.savez(f'data/Odometry{dataset}_imu.npz', poses=odometry.poses, stamps=odometry.timestamps)

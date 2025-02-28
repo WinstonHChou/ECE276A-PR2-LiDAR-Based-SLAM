@@ -66,21 +66,11 @@ class DifferentialDriveOdometryPostProcess:
       R = T[:3, :3]
       _, _, yaw = mat2euler(R, axes='sxyz')
   
-      pose[0] = T[0, 3]  # x
-      pose[1] = T[1, 3]  # y
-      pose[2] = yaw      # theta
+      pose[0] = T[0, 3]             # x
+      pose[1] = T[1, 3]             # y
+      pose[2] = angle_modulus(yaw)  # theta
       
       T_prev = T
-
-  def plot_odom(self):
-    plt.figure()
-    plt.plot(self.poses[:, 0], self.poses[:, 1], marker='o', linestyle='-', markersize=1, label="trajectory from odometry")
-    plt.xlabel("X (m)")
-    plt.ylabel("Y (m)")
-    plt.title("2D Trajectory")
-    plt.grid()
-    plt.legend()
-    plt.show(block=True)
 
   def plot_velocity(self):
     plt.figure()
@@ -93,6 +83,14 @@ class DifferentialDriveOdometryPostProcess:
     plt.grid()
     plt.legend()
     plt.show(block=True)
+
+def angle_modulus(angle_rad):
+    single_angle = not isinstance(angle_rad, np.ndarray)
+    angle_rad = np.atleast_1d(angle_rad)
+    
+    angle_rad = np.mod(angle_rad + np.pi, 2*np.pi) - np.pi
+    
+    return angle_rad[0] if single_angle else angle_rad
 
 def pose2d_to_transformation(pose2d):
   single_pose2d = False
@@ -128,7 +126,7 @@ def transformation_to_pose2d(transformation):
   pose2d = np.zeros((transformation.shape[0], 3))
   pose2d[:, 0] = transformation[:, 0, 3]  # x
   pose2d[:, 1] = transformation[:, 1, 3]  # y
-  pose2d[:, 2] = yaw                      # theta
+  pose2d[:, 2] = angle_modulus(yaw)       # theta
 
   if single_T:
     return pose2d[0,:]
@@ -145,8 +143,8 @@ def plot_odometry(odometry_serious, legend_kw = {}):
         if len(serious) == 4:
             kwargs = serious[3]
         plt.plot(odometry[:,0], odometry[:,1], label=label, **kwargs)
-    plt.xlabel("x")
-    plt.ylabel("y")
+    plt.xlabel("X (m)")
+    plt.ylabel("Y (m)")
     plt.legend(**legend_kw)
     plt.grid(True)
     plt.show(block=True)
@@ -157,8 +155,8 @@ def plot_odometry(odometry_serious, legend_kw = {}):
         if len(serious) == 4:
             kwargs = serious[3]
         plt.plot(stamp, odometry[:,0], label=label, **kwargs)
-    plt.xlabel("timestamp")
-    plt.ylabel("x")
+    plt.xlabel("Timestamp (sec)")
+    plt.ylabel("X (m)")
     plt.legend(**legend_kw)
     plt.show(block=True)
 
@@ -168,8 +166,8 @@ def plot_odometry(odometry_serious, legend_kw = {}):
         if len(serious) == 4:
             kwargs = serious[3]
         plt.plot(stamp, odometry[:,1], label=label, **kwargs)
-    plt.xlabel("timestamp")
-    plt.ylabel("y")
+    plt.xlabel("Timestamp (sec)")
+    plt.ylabel("Y (m)")
     plt.legend(**legend_kw)
     plt.show(block=True)
 
@@ -179,8 +177,8 @@ def plot_odometry(odometry_serious, legend_kw = {}):
         if len(serious) == 4:
             kwargs = serious[3]
         plt.plot(stamp, np.unwrap(odometry[:,2]), label=label, **kwargs)
-    plt.xlabel("timestamp")
-    plt.ylabel("yaw")
+    plt.xlabel("Timestamp")
+    plt.ylabel("Heading (Yaw, radians)")
     plt.legend(**legend_kw)
     plt.show(block=True)
 
