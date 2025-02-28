@@ -3,6 +3,7 @@ import scipy.io as sio
 import numpy as np
 import open3d as o3d
 from sklearn.neighbors import NearestNeighbors
+from scipy.stats import chi2
 from tqdm import tqdm
 
 def read_canonical_model(model_name):
@@ -95,20 +96,6 @@ def find_closest_points(source: np.ndarray, target: np.ndarray) -> np.ndarray:
   closest_points = target[indices.squeeze()]
   return closest_points
 
-def find_closest_points_threshold(source, target, percentile):
-  """
-  Find the closest points in the target for each point in the source using Scikit-learn's NearestNeighbors.
-  """
-  neigh = NearestNeighbors(n_neighbors=1)
-  neigh.fit(target)
-  distances, indices = neigh.kneighbors(source, return_distance=True)
-
-  distance_threshold = np.percentile(distances, percentile * 100)
-  mask = distances.flatten() <= distance_threshold
-
-  closest_points = target[indices.flatten()]
-  return closest_points, mask
-
 def estimate_transformation(source: np.ndarray, target: np.ndarray) -> np.ndarray:
   """
   Given (source, target) point association,
@@ -185,7 +172,29 @@ def auto_guess_icp(source, target, trial = 10, icp_type="icp"):
             best_T = T
     return best_T, best_error
 
-def icp_percentile(source, target, T_0 = np.eye(4), percentile=0.9, iterations=100, tolerance=1e-8):
+def mahalanobis_distance(points, mean, cov_inv):
+    """Compute Mahalanobis distance for a set of points."""
+    delta = points - mean
+    return np.sqrt(np.sum(delta @ cov_inv * delta, axis=1))
+
+def huber_loss(error, delta=1.0):
+  return np.where(np.abs(error) <= delta, 0.5 * error**2, delta * (np.abs(error) - 0.5 * delta))
+
+def find_closest_points_threshold(source, target, percentile):
+  """
+  Find the closest points in the target for each point in the source using Scikit-learn's NearestNeighbors.
+  """
+  neigh = NearestNeighbors(n_neighbors=1)
+  neigh.fit(target)
+  distances, indices = neigh.kneighbors(source, return_distance=True)
+
+  distance_threshold = np.percentile(distances, percentile * 100)
+  mask = distances.flatten() <= distance_threshold
+
+  closest_points = target[indices.flatten()]
+  return closest_points, mask
+
+def icp_threshold(source, target, T_0 = np.eye(4), percentile=0.9, iterations=100, tolerance=1e-8):
   '''
   return estimated_transformation and error
   '''
@@ -196,7 +205,7 @@ def icp_percentile(source, target, T_0 = np.eye(4), percentile=0.9, iterations=1
       closest_points, mask = find_closest_points_threshold(source_transformed, target, percentile)
       T = estimate_transformation(source_transformed[mask], closest_points[mask])
       source_transformed = to_xyz_points(T @ to_homogeneous_points(source_transformed))
-      error = np.sqrt(np.mean(np.sum((closest_points - source_transformed) ** 2, axis=1))) # RSME
+      error = np.sqrt(np.mean(huber_loss(np.sum((closest_points - source_transformed) ** 2, axis=1)))) # huber_loss
       if np.abs(prev_error - error) < tolerance:
           break
       prev_error = error

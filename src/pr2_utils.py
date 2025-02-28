@@ -9,7 +9,7 @@ import gtsam
 from gtsam import NonlinearFactorGraph, Values, Pose2, BetweenFactorPose2
 from tqdm import tqdm
 
-from icp_warm_up.utils import to_homogeneous_points, to_xyz_points, to_R_p, to_transformation, visualize_icp_result, icp, o3d_icp, icp_percentile
+from icp_warm_up.utils import to_homogeneous_points, to_xyz_points, to_R_p, to_transformation, visualize_icp_result, icp, o3d_icp, icp_threshold
 
 def tic():
   return time.time()
@@ -98,7 +98,7 @@ class LaserScanMatching:
     self.lidar_angle_increment = lidar_data["angle_increment"] # angular distance between measurements [rad]
     self.lidar_range_min = lidar_data["range_min"] # minimum range value [m]
     self.lidar_range_max = lidar_data["range_max"] # maximum range value [m]
-    self.lidar_ranges = lidar_data["ranges"]       # range data [m] (Note: values < range_min or > range_max should be discarded)
+    self.lidar_ranges = lidar_data["ranges"].T     # range data [m] (Note: values < range_min or > range_max should be discarded)
     self.lidar_stamps = lidar_data["time_stamps"]  # acquisition times of the lidar scans
     
     self.imu_odometry_poses = imu_odometry_data["poses"]
@@ -109,7 +109,15 @@ class LaserScanMatching:
     self.imu_odometry_poses_sync = np.array([np.interp(self.timestamps, self.imu_odometry_stamps, self.imu_odometry_poses[:,i]) for i in range(self.imu_odometry_poses.shape[1])]).T
 
     # print(self.imu_odometry_poses_sync[1400])
-    # self.plot_laserscan(self.lidar_ranges.T[1400], self.imu_odometry_poses_sync[1400])
+    print(self.lidar_ranges.shape)
+    self.plot_laserscan(self.lidar_ranges[1400], self.imu_odometry_poses_sync[1400])
+    self.plot_laserscan(self.lidar_ranges[1401], self.imu_odometry_poses_sync[1401])
+    temp_error = icp_threshold(
+      lidarscan_to_pointcloud(self.lidar_ranges[1401, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
+      lidarscan_to_pointcloud(self.lidar_ranges[1400, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment)
+    )
+    print(temp_error)
+    plt.show(block=True)
 
     self.icp_odometry_poses = self.icp_scan_matching()
   
@@ -120,9 +128,9 @@ class LaserScanMatching:
     error_sum = 0
     for i in tqdm(range(1, self.timestamps.shape[0])):
         T_guess = np.linalg.inv(imu_odometry_T[i-1]) @ imu_odometry_T[i]
-        T, error = icp_percentile(
-          lidarscan_to_pointcloud(self.lidar_ranges.T[i, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
-          lidarscan_to_pointcloud(self.lidar_ranges.T[i-1, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
+        T, error = icp_threshold(
+          lidarscan_to_pointcloud(self.lidar_ranges[i, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
+          lidarscan_to_pointcloud(self.lidar_ranges[i-1, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
           T_guess
         )
         error_sum += error
@@ -154,11 +162,11 @@ class LaserScanMatching:
     plt.arrow(odometry_pose[0], odometry_pose[1], dx, dy, head_width=0.1, head_length=0.15, fc='grey', ec='grey')
     
     plt.grid(True)
-    plt.show(block=True)
+    # plt.show(block=True)
 
 class PoseGraphOptimization:
   def __init__(self, lidar_raw, imu_odometry_raw, icp_odometry_raw):
-    self.lidar_ranges = lidar_raw["ranges"]       # range data [m] (Note: values < range_min or > range_max should be discarded)
+    self.lidar_ranges = lidar_raw["ranges"].T     # range data [m] (Note: values < range_min or > range_max should be discarded)
     self.lidar_stamps = lidar_raw["time_stamps"]  # acquisition times of the lidar scans
     self.lidar_angle_min = lidar_raw["angle_min"] # start angle of the scan [rad]
     self.lidar_angle_max = lidar_raw["angle_max"] # end angle of the scan [rad]
@@ -227,9 +235,9 @@ class PoseGraphOptimization:
           T_guess = np.linalg.inv(pose2d_to_transformation(self.imu_odometry_poses_sync[near_point_index])) * pose2d_to_transformation(self.imu_odometry_poses_sync[i])
           delta_theta = abs((self.imu_odometry_poses_sync[i,2] - self.imu_odometry_poses_sync[near_point_index,2]) % (2 * np.pi) - np.pi)
           expected_percentile = -0.1591*delta_theta+0.9
-          T_diff, error = icp_percentile(
-            lidarscan_to_pointcloud(self.lidar_ranges.T[i, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
-            lidarscan_to_pointcloud(self.lidar_ranges.T[i-1, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
+          T_diff, error = icp_threshold(
+            lidarscan_to_pointcloud(self.lidar_ranges[i, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
+            lidarscan_to_pointcloud(self.lidar_ranges[i-1, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
             T_guess, percentile=expected_percentile
           )
           sum_error += error
