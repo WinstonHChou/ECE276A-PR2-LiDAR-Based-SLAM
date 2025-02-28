@@ -2,6 +2,7 @@
 import numpy as np
 import matplotlib.pyplot as plt; plt.ion()
 import time
+import sys
 import scipy
 from transforms3d.euler import mat2euler
 from tqdm import tqdm
@@ -10,6 +11,28 @@ def tic():
   return time.time()
 def toc(tstart, name="Operation"):
   print('%s took: %s sec.\n' % (name,(time.time() - tstart)))
+
+def parse_args(argv):
+  parsed_args = {}
+  for arg in argv:
+    if '=' in arg:
+      key, value = arg.split('=', 1)
+      if key == 'dataset':
+          parsed_args['dataset'] = int(value)
+      # elif key == 'iterations':
+      #     parsed_args['iterations'] = int(value)
+      # elif key == 'stepSize':
+      #     parsed_args['stepSize'] = float(value)
+      # elif key == 'rough':
+      #     parsed_args['rough'] = value.lower() in ['true', '1', 'yes']
+  
+  # Set default values if not provided
+  parsed_args.setdefault('dataset', None)
+  # parsed_args.setdefault('iterations', 300)   # Default Iterations: 300
+  # parsed_args.setdefault('stepSize', 0.025)   # Default Step Size: 0.025
+  # parsed_args.setdefault('rough', False)
+  
+  return parsed_args
 
 class DifferentialDriveOdometryPostProcess:
   def __init__(self, left_encoder_rev, right_encoder_rev, encoder_stamps, imu_omega, imu_stamps, T_0 = np.eye(4)):
