@@ -31,3 +31,5 @@ if __name__ == '__main__':
     imu_stamps
   )
   odometry.plot_odom()
+
+  np.savez(f'data/Odometry{dataset}_imu.npz', poses=odometry.poses, stamps=odometry.timestamps)
