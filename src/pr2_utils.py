@@ -23,8 +23,8 @@ def parse_args(argv):
       key, value = arg.split('=', 1)
       if key == 'dataset':
           parsed_args['dataset'] = int(value)
-      # elif key == 'iterations':
-      #     parsed_args['iterations'] = int(value)
+      elif key == 'odom_str':
+          parsed_args['odom_str'] = str(value)
       # elif key == 'stepSize':
       #     parsed_args['stepSize'] = float(value)
       # elif key == 'rough':
@@ -32,7 +32,7 @@ def parse_args(argv):
   
   # Set default values if not provided
   parsed_args.setdefault('dataset', None)
-  # parsed_args.setdefault('iterations', 300)   # Default Iterations: 300
+  parsed_args.setdefault('odom_str', "imu")   # Default: imu
   # parsed_args.setdefault('stepSize', 0.025)   # Default Step Size: 0.025
   # parsed_args.setdefault('rough', False)
   
