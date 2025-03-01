@@ -108,15 +108,13 @@ class LaserScanMatching:
     self.imu_odometry_stamps = np.cumsum(np.concatenate(([0], np.diff(self.imu_odometry_stamps)))) # normalized timestamp
     self.imu_odometry_poses_sync = np.array([np.interp(self.timestamps, self.imu_odometry_stamps, self.imu_odometry_poses[:,i]) for i in range(self.imu_odometry_poses.shape[1])]).T
 
-    # print(self.imu_odometry_poses_sync[1400])
-    print(self.lidar_ranges.shape)
-    self.plot_laserscan(self.lidar_ranges[1400], self.imu_odometry_poses_sync[1400])
-    self.plot_laserscan(self.lidar_ranges[1401], self.imu_odometry_poses_sync[1401])
-    temp_error = icp_threshold(
-      lidarscan_to_pointcloud(self.lidar_ranges[1401, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
-      lidarscan_to_pointcloud(self.lidar_ranges[1400, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment)
+    self.plot_laserscan(self.lidar_ranges[1000], self.imu_odometry_poses_sync[1000])
+    self.plot_laserscan(self.lidar_ranges[1001], self.imu_odometry_poses_sync[1001])
+    temp_T, temp_error = icp_threshold(
+      lidarscan_to_pointcloud(self.lidar_ranges[1001, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
+      lidarscan_to_pointcloud(self.lidar_ranges[1000, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment)
     )
-    print(temp_error)
+    print(f"Fixed 100, 1001 Sample Test: error={temp_error}")
     plt.show(block=True)
 
     print(np.shape(self.imu_odometry_stamps))
