@@ -21,4 +21,4 @@ if __name__ == '__main__':
     (pose_graph_optimization.factor_graph_optimized, pose_graph_optimization.timestamps, "factor_graph_optimized", {"linestyle":'--'})
   ])
 
-  # np.savez(f'data/Odometry{dataset}_icp.npz', poses=pose_graph_optimization.icp_odometry_poses, stamps=pose_graph_optimization.timestamps)
+  np.savez(f'data/Odometry{dataset}_lc{2 if pose_graph_optimization.num_new_edge>0 else 0}.npz', poses=pose_graph_optimization.factor_graph_optimized, stamps=pose_graph_optimization.timestamps)

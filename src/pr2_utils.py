@@ -224,13 +224,13 @@ class PoseGraphOptimization:
       )
     )
 
-    num_new_edge = 0
+    self.num_new_edge = 0
     sum_error = 0
     bar = tqdm(range(1, self.timestamps.shape[0], 400))
     for i in bar:
         near_point_indices = self.find_near_points(self.icp_odometry_poses_sync, i)
-        num_new_edge += len(near_point_indices)
-        bar.set_postfix_str(f"num_new_edge: {num_new_edge}")
+        self.num_new_edge += len(near_point_indices)
+        bar.set_postfix_str(f"num_new_edge: {self.num_new_edge}")
         for near_point_index in near_point_indices:
           T_guess = np.linalg.inv(pose2d_to_transformation(self.imu_odometry_poses_sync[near_point_index])) * pose2d_to_transformation(self.imu_odometry_poses_sync[i])
           delta_theta = abs((self.imu_odometry_poses_sync[i,2] - self.imu_odometry_poses_sync[near_point_index,2]) % (2 * np.pi) - np.pi)
@@ -248,9 +248,9 @@ class PoseGraphOptimization:
               gtsam.noiseModel.Diagonal.Sigmas([error, error, error])
             )
           )
-    avg_error = sum_error / num_new_edge
+    avg_error = sum_error / self.num_new_edge
     print(avg_error)
-    print(num_new_edge)
+    print(self.num_new_edge)
 
     params = gtsam.GaussNewtonParams()
     params.setVerbosity("Termination")  # this will show info about stopping conds
