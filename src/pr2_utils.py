@@ -119,6 +119,8 @@ class LaserScanMatching:
     print(temp_error)
     plt.show(block=True)
 
+    print(np.shape(self.imu_odometry_stamps))
+
     self.icp_odometry_poses = self.icp_scan_matching()
   
   def icp_scan_matching(self):
@@ -234,7 +236,7 @@ class PoseGraphOptimization:
         for near_point_index in near_point_indices:
           T_guess = np.linalg.inv(pose2d_to_transformation(self.imu_odometry_poses_sync[near_point_index])) * pose2d_to_transformation(self.imu_odometry_poses_sync[i])
           delta_theta = abs((self.imu_odometry_poses_sync[i,2] - self.imu_odometry_poses_sync[near_point_index,2]) % (2 * np.pi) - np.pi)
-          expected_percentile = -0.1591*delta_theta+0.9
+          expected_percentile = -0.5 * delta_theta/np.pi + 0.9
           T_diff, error = icp_threshold(
             lidarscan_to_pointcloud(self.lidar_ranges[i, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
             lidarscan_to_pointcloud(self.lidar_ranges[i-1, :], self.lidar_range_min, self.lidar_range_max, self.lidar_angle_min, self.lidar_angle_max, self.lidar_angle_increment),
@@ -339,8 +341,9 @@ def lidarscan_to_pointcloud(ranges, range_min, range_max, angle_min, angle_max, 
   lidar_num_of_points = int((angle_max - angle_min) / angle_increment) + 1
   lidar_angles = np.linspace(angle_min, angle_max, lidar_num_of_points)
   range_indices = (ranges > range_min) & (ranges < range_max)
-  z_offset = 0
-  x = ranges[range_indices] * np.cos(lidar_angles[range_indices])
+  x_offset = 0.13323
+  z_offset = 0 # 0.51435
+  x = ranges[range_indices] * np.cos(lidar_angles[range_indices]) + x_offset
   y = ranges[range_indices] * np.sin(lidar_angles[range_indices])
   z = np.full(x.shape, z_offset)
 
