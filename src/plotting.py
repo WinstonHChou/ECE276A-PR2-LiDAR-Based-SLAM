@@ -32,6 +32,6 @@ if __name__ == "__main__":
       (icp_odometry, icp_odometry_stamp, "ICP Odometry (observation model)",  {"linewidth":1}),
       (lc2_odometry, lc2_odometry_stamp, "factor graph optimized", {"linewidth":1, "linestyle":'--'}),
       # (lc1_odometry, lc1_odometry_stamp, "loop closure optimized", {"linewidth":1, "linestyle":'--'}),
-    ], {"loc":'lower center', "bbox_to_anchor":(0.5, -0.3), "shadow":False, "ncol":2})
+    ], {"loc":'lower center'})
 
 
