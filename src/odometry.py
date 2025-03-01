@@ -37,4 +37,4 @@ if __name__ == '__main__':
     {"loc": "upper right"}
   )
 
-  np.savez(f'data/Odometry{dataset}_imu.npz', poses=odometry.poses, stamps=odometry.timestamps)
+  np.savez(f'data/Odometry{dataset}_imu.npz', poses=odometry.poses[1:], stamps=odometry.timestamps[1:])
