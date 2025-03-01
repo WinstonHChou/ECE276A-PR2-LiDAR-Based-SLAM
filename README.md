@@ -59,7 +59,6 @@ The code is only tested with miniconda environment in **WSL2** to ensure that `o
     ```
 
 ## Running the Project
-...............
 
 ### ICP (Iterative Closest Points) Warm Up
 To execute the **icp warm up script**, do:
@@ -69,8 +68,33 @@ python3 test_icp.py
 ```
 Which should process all Warm Up **Practice Datasets (4 datasests each, for `drill` and `liq_container`, a total of 8 datasets)**
 
+### IMU Odometry
+```bash
+python3 src/odometry.py dataset=<20 or 21>
+```
+
+### Scan Matching
+```bash
+python3 src/scan_matching.py dataset=<20 or 21>
+```
+
+### Pose-Graph Optimization
+```bash
+python3 src/pose_graph_optimization.py dataset=<20 or 21>
+```
+
+### Mapping (did not finished)
+```bash
+python3 src/mapping.py dataset=<20 or 21> odom_str=lc2
+```
+
+### Plotting
+```bash
+python3 src/plotting.py
+```
+
 ## Results
-...............
+Check `[ECE 276A] PR2_Report - Winston Chou.pdf` and `figure/`
 
 ## Acknowledgments
 This project is part of the **ECE 276A** course at **UC San Diego**, which is inspired by the teaching and research of various professors in the field of robotics and estimation
